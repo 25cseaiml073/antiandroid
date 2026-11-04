@@ -61,10 +61,11 @@ object LocalEnvironmentManager {
     // Minimum 10 MB required for a real Termux bootstrap archive
     private const val MIN_BOOTSTRAP_SIZE_BYTES = 10 * 1024 * 1024L
 
-    const val HARDCODED_ROOTFS_URL = "https://github.com/termux/termux-packages/releases/download/bootstrap-2026.08.30-r1%2Bapt.android-7/bootstrap-aarch64.zip"
-    const val HARDCODED_ROOTFS_TAG = "2026.08"
-    const val HARDCODED_ROOTFS_ASSET = "bootstrap-aarch64.zip"
-    const val HARDCODED_ROOTFS_SIZE_BYTES = 35 * 1024 * 1024L
+    const val HARDCODED_ROOTFS_URL = "https://github.com/25cseaiml073/antiandroid/releases/download/rootfs-v1/bootrapz_2026-10-04.zip"
+    const val FALLBACK_ROOTFS_URL = "https://github.com/Santoshkurmi/antigem/releases/download/rootfs-v1/bootrapz_2026-10-04.zip"
+    const val HARDCODED_ROOTFS_TAG = "rootfs-v1"
+    const val HARDCODED_ROOTFS_ASSET = "bootrapz_2026-10-04.zip"
+    const val HARDCODED_ROOTFS_SIZE_BYTES = 350 * 1024 * 1024L
 
     const val UBUNTU_ROOTFS_URL = "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-aarch64-pd-v4.30.1.tar.xz"
     const val UBUNTU_ROOTFS_TAG = "v4.30.1"
@@ -878,10 +879,14 @@ object LocalEnvironmentManager {
             when (source) {
                 is BootstrapSource.Auto -> {
                     val isTermux = isTermuxPackage(appContext)
-                    val targetUrl = if (isTermux) HARDCODED_ROOTFS_URL else UBUNTU_ROOTFS_URL
+                    val candidateUrls = if (isTermux) {
+                        listOf(HARDCODED_ROOTFS_URL, FALLBACK_ROOTFS_URL)
+                    } else {
+                        listOf(UBUNTU_ROOTFS_URL)
+                    }
                     val targetAsset = if (isTermux) HARDCODED_ROOTFS_ASSET else UBUNTU_ROOTFS_ASSET
                     val targetSizeBytes = if (isTermux) HARDCODED_ROOTFS_SIZE_BYTES else UBUNTU_ROOTFS_SIZE_BYTES
-                    val titlePrefix = if (isTermux) "AntiGem Rootfs" else "Ubuntu Rootfs"
+                    val titlePrefix = if (isTermux) "AntiAndroid Rootfs" else "Ubuntu Rootfs"
 
                     _installerState.value = LocalInstallerState.Downloading(
                         bytesDownloaded = 0L,
@@ -892,19 +897,20 @@ object LocalEnvironmentManager {
                     )
                     updateInstallNotification(appContext, "Downloading $titlePrefix", "Connecting...", -1)
 
-                    try {
-                        val request = Request.Builder()
-                            .url(targetUrl)
-                            .header("User-Agent", "GeminiApp-LocalTerminal/${Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64"}")
-                            .build()
+                    var successDownload = false
+                    for (targetUrl in candidateUrls) {
+                        try {
+                            log("Downloading rootfs from: $targetUrl")
+                            val request = Request.Builder()
+                                .url(targetUrl)
+                                .header("User-Agent", "GeminiApp-LocalTerminal/${Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64"}")
+                                .build()
 
-                        httpClient.newCall(request).execute().use { response ->
-                            if (!response.isSuccessful) {
-                                val errorMsg = "Download failed: HTTP ${response.code} from release server."
-                                updateInstallNotification(appContext, "Installation Failed", errorMsg, -2, ongoing = false, force = true)
-                                _installerState.value = LocalInstallerState.Error(errorMessage = errorMsg, canRetry = true)
-                                return@withContext false
-                            }
+                            httpClient.newCall(request).execute().use { response ->
+                                if (!response.isSuccessful) {
+                                    log("Mirror returned HTTP ${response.code}, trying next candidate...")
+                                    return@use
+                                }
 
                             val body = response.body
                             if (body == null) {
@@ -953,22 +959,25 @@ object LocalEnvironmentManager {
                             finalDownloadedSize = tempZipFile.length()
                             if (finalDownloadedSize >= MIN_BOOTSTRAP_SIZE_BYTES && validateArchiveIntegrity(tempZipFile)) {
                                 downloadSucceeded = true
+                                successDownload = true
                             } else {
+                                log("Downloaded archive incomplete or invalid from $targetUrl")
                                 tempZipFile.delete()
-                                val errorMsg = "Downloaded rootfs archive was incomplete or corrupted."
-                                updateInstallNotification(appContext, "Installation Failed", errorMsg, -2, ongoing = false, force = true)
-                                _installerState.value = LocalInstallerState.Error(errorMessage = errorMsg, canRetry = true)
-                                return@withContext false
                             }
                         }
+                        if (successDownload) break
                     } catch (e: Exception) {
                         Log.w(TAG, "Download attempt failed from $targetUrl: ${e.message}")
                         if (tempZipFile.exists()) tempZipFile.delete()
-                        val errorMsg = "Download failed: ${e.message ?: "Network error"}"
-                        updateInstallNotification(appContext, "Installation Failed", errorMsg, -2, ongoing = false, force = true)
-                        _installerState.value = LocalInstallerState.Error(errorMessage = errorMsg, canRetry = true)
-                        return@withContext false
                     }
+                }
+
+                if (!successDownload) {
+                    val errorMsg = "Download failed: could not fetch rootfs from available mirrors."
+                    updateInstallNotification(appContext, "Installation Failed", errorMsg, -2, ongoing = false, force = true)
+                    _installerState.value = LocalInstallerState.Error(errorMessage = errorMsg, canRetry = true)
+                    return@withContext false
+                }
                 }
 
                 is BootstrapSource.BaseMinimum -> {
