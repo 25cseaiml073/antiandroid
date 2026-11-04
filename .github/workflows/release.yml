@@ -5,8 +5,8 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'version.json'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
