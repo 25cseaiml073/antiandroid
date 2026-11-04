@@ -337,6 +337,19 @@ fun BrowserScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // 0. Direct Back to Chat Button
+                        IconButton(
+                            onClick = { onClose() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Chat",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         // 1. DevTools / Eruda Web Inspector Button (Left 1)
                         val hasActivePage = activeTab != null && activeTab.url.isNotBlank() && activeTab.url != "about:blank"
                         val isDevToolsOn = activeTab?.isDevToolsEnabled == true
